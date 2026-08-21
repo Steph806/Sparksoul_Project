@@ -4,7 +4,8 @@ Usage:  python3 audio_evidence.py audio.wav [label] [offset_seconds]
 
 Produces per-bin and global prosody/voice-quality stats (JSON + table on
 stdout), a pause ledger, unvoiced high-energy events, utterance-final
-pitch contours, and 2-minute mel-spectrogram panels with pitch (white)
+pitch contours (with final-slope distribution stats for
+speaker-relative reading), and 2-minute mel-spectrogram panels with pitch (white)
 and RMS energy (red) overlays: <label>_fig*.png.
 
 No emotion labels are produced anywhere. Interpretation happens in the
@@ -21,6 +22,9 @@ import parselmouth
 from parselmouth.praat import call
 
 SR, N_FFT, HOP, BIN_S = 22050, 1024, 256, 15.0
+TOP_DB = 32  # silence floor (dB below recording peak) for the pause/
+             # speech split — floor-relative, so pause counts are
+             # within-recording evidence only
 
 def mmss(t):
     return f"{int(max(t,0)//60)}:{int(max(t,0)%60):02d}"
@@ -47,18 +51,24 @@ def analyze(path, label="a", offset=0.0):
         y=y, sr=sr, n_fft=N_FFT, hop_length=HOP, n_mels=128, fmax=8000,
         power=2.0), ref=np.max)
 
-    # speech/silence segmentation and pause ledger
-    iv = librosa.effects.split(y, top_db=32, frame_length=N_FFT,
+    # non-silence segmentation (amplitude gate, NOT voice-activity
+    # detection) and pause ledger
+    iv = librosa.effects.split(y, top_db=TOP_DB, frame_length=N_FFT,
                                hop_length=HOP) / sr
     pauses = [(iv[i-1][1], iv[i][0]-iv[i-1][1])
               for i in range(1, len(iv)) if iv[i][0]-iv[i-1][1] >= 0.6]
+    if len(iv) and iv[0][0] >= 0.6:                      # leading silence
+        pauses.insert(0, (0.0, float(iv[0][0])))
+    if len(iv) and len(y)/sr - iv[-1][1] >= 0.6:         # trailing silence
+        pauses.append((float(iv[-1][1]), len(y)/sr - float(iv[-1][1])))
 
     onsets = librosa.onset.onset_detect(y=y, sr=sr, hop_length=HOP,
                                         units="time", backtrack=False)
     speech_time = float(sum(e-s for s, e in iv)) or 1e-9
 
     # unvoiced high-energy events (laugh/sigh/breath candidates)
-    voiced_on_rms = ~np.isnan(np.interp(t_rms, t_f0, f0))
+    voiced_flag = (~np.isnan(f0)).astype(float)
+    voiced_on_rms = np.interp(t_rms, t_f0, voiced_flag) > 0.5
     cand = (rms_db > -22) & ~voiced_on_rms
     events, run = [], None
     for i, c in enumerate(cand):
@@ -68,10 +78,12 @@ def analyze(path, label="a", offset=0.0):
             if t_rms[i-1]-t_rms[run] >= 0.25:
                 events.append((t_rms[run], t_rms[i-1]-t_rms[run]))
             run = None
+    if run is not None and t_rms[-1]-t_rms[run] >= 0.25:  # flush at EOF
+        events.append((t_rms[run], t_rms[-1]-t_rms[run]))
 
     # utterance-final contours: slope of last 0.35 s of voiced pitch
     finals = {"rise": 0, "fall": 0, "level": 0}
-    ledger = []
+    ledger, slopes = [], []
     for s, e in iv:
         m = (t_f0 >= e-0.35) & (t_f0 <= e) & ~np.isnan(f0)
         if m.sum() >= 5:
@@ -79,6 +91,7 @@ def analyze(path, label="a", offset=0.0):
             slope = float(np.polyfit(t_f0[m]-t_f0[m][0], st, 1)[0])
             kind = "rise" if slope > 8 else "fall" if slope < -8 else "level"
             finals[kind] += 1
+            slopes.append(slope)
             ledger.append([mmss(offset+e), round(slope, 1), kind])
 
     # HNR (voice quality)
@@ -98,34 +111,52 @@ def analyze(path, label="a", offset=0.0):
                      "range_semitones": round(st_range(v), 1)},
         "pitch_hist_50_500": np.histogram(v, bins=30, range=(50, 500))[0].tolist(),
         "hnr_db_mean": hnr,
-        "articulation_onsets_per_speech_s": round(len(onsets)/speech_time, 2),
-        "speech_rate_onsets_per_s": round(len(onsets)/dur, 2),
+        "articulation_onsets_per_nonsilent_s": round(len(onsets)/speech_time, 2),
+        "overall_onsets_per_s": round(len(onsets)/dur, 2),
         "n_pauses>=0.6s": len(pauses),
         "long_pauses>=1.2s": [[mmss(offset+t), round(g, 2)]
                               for t, g in pauses if g >= 1.2],
         "unvoiced_high_energy_events": [[mmss(offset+t), round(d, 2)]
                                         for t, d in events][:40],
         "utterance_final_contours": finals,
+        "final_slope_stats_st_per_s": ({
+            "median": round(float(np.median(slopes)), 1),
+            "iqr": [round(float(np.percentile(slopes, 25)), 1),
+                    round(float(np.percentile(slopes, 75)), 1)],
+            "p10_p90": [round(float(np.percentile(slopes, 10)), 1),
+                        round(float(np.percentile(slopes, 90)), 1)],
+        } if slopes else None),
         "final_contour_ledger": ledger[:80],
     }
     print(json.dumps(glob, indent=1))
 
     # per-bin table
-    print("t | voi spk | f0med iqr stR | rmsMed rmsMax | ons/s | jit% shim%")
+    print("t | voi nsl | f0med iqr stR | rmsMed rmsMax | ons/s | cpps | jit% shim%")
     for b in range(int(np.ceil(dur/BIN_S))):
         a0, a1 = b*BIN_S, min((b+1)*BIN_S, dur)
         fv = f0[(t_f0 >= a0) & (t_f0 < a1)]; fvv = fv[~np.isnan(fv)]
         rb = rms_db[(t_rms >= a0) & (t_rms < a1)]
         sp = sum(max(0, min(e, a1)-max(s, a0)) for s, e in iv)/(a1-a0)
-        jit = shim = float("nan")
+        jit = shim = cpps = float("nan")
         try:
             sb = snd.extract_part(from_time=a0, to_time=a1)
-            pp = call(sb, "To PointProcess (periodic, cc)", 50, 500)
-            jit = call(pp, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3)
-            shim = call([sb, pp], "Get shimmer (local)",
-                        0, 0, 0.0001, 0.02, 1.3, 1.6)
         except Exception:
-            pass
+            sb = None
+        if sb is not None:
+            try:
+                pp = call(sb, "To PointProcess (periodic, cc)", 50, 500)
+                jit = call(pp, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3)
+                shim = call([sb, pp], "Get shimmer (local)",
+                            0, 0, 0.0001, 0.02, 1.3, 1.6)
+            except Exception:
+                pass
+            try:
+                pcg = call(sb, "To PowerCepstrogram", 60, 0.002, 5000, 50)
+                cpps = call(pcg, "Get CPPS", False, 0.02, 0.0005, 60, 330,
+                            0.05, "Parabolic", 0.001, 0.05, "Straight",
+                            "Robust")
+            except Exception:
+                pass
         row = [f"{mmss(offset+a0)}-{mmss(offset+a1)}",
                round(float(np.mean(~np.isnan(fv))), 2) if len(fv) else 0,
                round(sp, 2),
@@ -136,12 +167,12 @@ def analyze(path, label="a", offset=0.0):
                round(float(np.median(rb)), 1) if len(rb) else None,
                round(float(np.max(rb)), 1) if len(rb) else None,
                round(len(onsets[(onsets >= a0) & (onsets < a1)])/(a1-a0), 1),
+               round(float(cpps), 1) if cpps == cpps else None,
                round(jit*100, 2) if jit == jit else None,
                round(shim*100, 2) if shim == shim else None]
         print(" | ".join(str(x) for x in row))
 
     # 2-minute panels, 2 rows of 60 s, pitch + energy overlays
-    f0_mel = librosa.hz_to_mel(f0)
     for fi in range(int(np.ceil(dur/120))):
         fig, axes = plt.subplots(2, 1, figsize=(16, 8))
         for ri in range(2):
@@ -155,7 +186,8 @@ def analyze(path, label="a", offset=0.0):
                 hop_length=HOP, fmax=8000, cmap="turbo", ax=ax,
                 x_coords=np.linspace(offset+a0, offset+a1, i1-i0))
             m = (t_f0 >= a0) & (t_f0 < a1)
-            ax.plot(offset+t_f0[m], f0_mel[m], color="white", lw=1.6)
+            ax.plot(offset+t_f0[m], f0[m], color="black", lw=3.0)
+            ax.plot(offset+t_f0[m], f0[m], color="white", lw=1.5)
             ax2 = ax.twinx()
             mr = (t_rms >= a0) & (t_rms < a1)
             ax2.plot(offset+t_rms[mr], rms_db[mr], color="red", ls="--",

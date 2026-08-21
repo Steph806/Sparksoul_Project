@@ -40,7 +40,11 @@ def sheet(files, labels, cols, outpath):
     for i, (im, lab) in enumerate(zip(ims, labels)):
         x, y = (i % cols)*w, (i // cols)*h
         S.paste(im, (x, y))
-        d.rectangle([x, y, x+84, y+26], fill="black")
+        try:
+            wlab = int(d.textlength(lab, font=FONT)) + 10
+        except AttributeError:
+            wlab = 8 + 12 * len(lab)
+        d.rectangle([x, y, x+wlab, y+26], fill="black")
         d.text((x+4, y+3), lab, fill="yellow", font=FONT)
     S.save(outpath)
     print("wrote", outpath)

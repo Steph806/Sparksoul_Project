@@ -32,6 +32,8 @@ Two design principles carry everything:
 ## The iron rule: order and written commitment
 
 ```
+Stage 0  PRIORS     (declare known hypotheses in writing — see first rule)
+   ↓
 Stage A  ACOUSTICS  (blind: no ASR, no video frames, no captions)
    ↓  write the full acoustic read + explicit predictions FIRST
 Stage B  WORDS      (transcript: verify or generate, then align)
@@ -41,9 +43,25 @@ Stage C  VISUALS    (frames: survey sweep, then targeted bursts)
 Stage D  JUNCTION   (cross-modal timing, ownership, synthesis)
 ```
 
+- **Declare priors first.** Blindness has a fourth channel besides
+  ASR, frames, and captions: the analyst's own expectations. Before
+  Stage A, log in writing every hypothesis already in play — the
+  user's stated read, hunches from how the request was framed,
+  anything remembered from earlier sessions about this creator or
+  clip. Priors can't be unshared once known; declaring them makes
+  them auditable. Carry them to Stage D, where the verdict states,
+  for each one: supported, contradicted, or beyond the method's
+  reach (inner states like sincerity stay out of reach). A prior
+  that surfaces mid-analysis is logged the moment it appears, with
+  a note of which stages preceded it.
 - Never peek ahead. In Stage A do not run speech recognition, do not
-  decode video frames, and say so explicitly in the write-up ("I ran no
-  ASR and decoded no frames; I do not know the words").
+  decode video frames, and say so explicitly in the write-up — in
+  procedural terms: "I ran no ASR, accessed no transcript, decoded no
+  frames, and made no deliberate use of lexical content." Do not claim
+  "I do not know the words": a method premised on spectrograms carrying
+  recoverable structure cannot also promise its analyst learned nothing
+  lexical from looking at them (phoneme-family leakage from panels is
+  demonstrated, not hypothetical).
 - If contamination is unavoidable (e.g., the user pasted the transcript
   in the same message as the audio), say so plainly, still write the
   acoustic read before re-reading the transcript, and do not claim the
@@ -73,7 +91,10 @@ voiced fraction, speech fraction, RMS energy stats, onsets/sec
 ledger (every silence ≥ 0.6 s, long ones flagged), unvoiced
 high-energy events (laugh/sigh/breath candidates), utterance-final
 pitch-contour counts (rise/fall/level — see interpretation notes), a
-pitch histogram (speaker-count check: unimodal ≈ one speaker), and
+pitch histogram (speaker-count screen: unimodal is weak evidence
+consistent with one speaker — corroborate with absent register
+alternation and absent reply speech in pauses; multimodality is a flag
+to investigate, never a verdict), and
 mel-spectrogram panels with pitch and energy overlays.
 
 **Look at the spectrograms yourself.** The numbers find the moments;
@@ -106,7 +127,15 @@ processes may not survive between turns). If they don't, generate one.
 Report divergences honestly, including which version is better —
 sometimes the user's human/AI transcriber beats your ASR pass, and
 sometimes ASR catches small things (a repeated word, a discourse
-marker) the other transcript smoothed away.
+marker) the other transcript smoothed away. Two systematic ASR
+cautions: VAD-gated Whisper can hallucinate repeated phrases across
+music beds and long silence, and language detection locks once per
+file, so code-switched openings (a greeting in another language)
+come back mangled — score such divergences to the human transcript,
+not against it. And treat a human transcript's punctuation as the
+transcriber's annotation layer, not evidence: ellipses and dashes
+encode *their* reading of the pauses. Align silence against the
+packet's pause ledger, never against punctuation.
 
 Then lay the transcript against the Stage A timeline and **score every
 prediction, hits and misses both**. The misses are frequently the real
@@ -129,11 +158,21 @@ Now, and only now, decode frames. Two passes, both via
 burned-in global timestamps:
 
 1. **Survey sweep** — ~1 frame every 6–8 s across the whole video.
-   Establishes baseline: setting, framing, whether it is one take
+   Establishes baseline: setting, framing, whether any cuts are detectable
    (pauses real vs edited), posture vocabulary, on-screen text, props.
 2. **Targeted bursts** — 1.5–3 fps for 6–12 s windows at the moments
    Stages A and B flagged: every long pause, every surge and valley,
    key lines, the opening, the ending.
+
+**Triage bursts by expected disagreement, not by count.** A
+pause-dense recording can flag dozens of candidate moments, and each
+contact sheet spends attention. Burst first where the modalities are
+most likely to *disagree*: silences whose fill is unknown (staged
+vs. distressed), peaks whose owner is unknown (quoted vs. felt),
+register claims that need testing ("I'm joking," "I'm excited"),
+plus the opening and the close. Six to ten bursts usually resolve a
+ten-minute monologue; when two sheets in a row only re-confirm the
+survey baseline, stop bursting that class of moment.
 
 **Describe before interpreting.** For each burst, log what the face
 and body do frame by frame, then interpret. Apply the
@@ -193,14 +232,41 @@ previous one, and what could not be determined.
 - **Motion energy**: mean absolute frame difference over time (PIL is
   enough) → gesture/stillness timeline; cross-correlate with RMS for
   gesture–speech coupling.
-- **One-take certification**: `ffmpeg -vf "select='gt(scene,0.3)'"`
-  scene-change detection.
+- **Cut screening**: `ffmpeg -vf "select='gt(scene,0.3)'"` scene-change
+  detection finds cuts; finding none cannot certify a continuous take
+  (dissolves, matched cuts, and sub-threshold edits evade it). Report
+  "no cuts detected at threshold 0.3 — consistent with a single take,"
+  never "certified."
 - **Caption OCR**: pytesseract on frames → compare burned-in captions
   against actual speech; captions sometimes editorialize.
 - **Word-level alignment**: WhisperX or equivalent for word timestamps
   so acoustic events map to words automatically.
 - **Cross-recording comparison**: normalize loudness (LUFS) before
   comparing energy across different recordings.
+- **Living miss scorecard**: keep one running file across analyses
+  logging each Stage A prediction, its Stage B/D score, and the miss
+  class when wrong. The systematic-miss list in Stage B is a seed,
+  not a ceiling — append new classes as runs reveal them, so
+  calibration accumulates instead of being rediscovered.
+- **Cross-architecture replication**: the Stage A packet (JSON +
+  panels) is self-contained, so a second model can produce a fully
+  blind read without ever touching the media. Compare committed
+  blind reads before either analyst sees the transcript; divergence
+  between the blind reads is itself data — about the recording and
+  about the analysts.
+- **Lexical-blind probe** (optional; after the Stage A commit, before
+  any transcript): isolate 3–5 short high-interest windows and render
+  wideband panels with `scripts/lexical_targets.py`, which bakes
+  stable target IDs and exact times into the artifact so write-up and
+  image cannot drift. Declare genre priors first — the lexical layer
+  is where expectation leaks hardest ("what a rant probably contains"
+  is not something visible in pixels). Commit hypotheses at three
+  levels, each with its own confidence: acoustic structure (syllable
+  count, stress placement, terminal accent) → phoneme/vowel family
+  (diphthong class, onset manner and place) → lexeme. Stage B scores
+  each level separately — "could/couldn't read it" flattens the real
+  result. Expect structure to score far above family, and family
+  above lexeme.
 
 ## Guardrails (non-negotiable)
 

@@ -32,15 +32,34 @@ phone-mic recordings worse still. Use them **comparatively within the
 recording**, not against clinical thresholds: a stretch where shimmer
 runs 2–3 points above the recording's own baseline is a real
 instability signal (strain, emotional load, or pressed/rough
-phonation); an absolute value alone is not. HNR falls with
+phonation); an absolute value alone is not. Prefer CPPS (smoothed
+cepstral peak prominence, in the packet's per-bin table) as the primary
+voice-quality measure for connected speech — far more robust than
+perturbation measures outside sustained vowels; lower CPPS reads
+breathier/rougher, and like everything here it is read comparatively
+against the recording's own baseline, with jitter/shimmer demoted to
+supporting evidence. HNR falls with
 breathiness and roughness. Creak/vocal fry shows up as pitch-histogram
 mass at 50–80 Hz plus pulsed striation on the spectrogram; it is a
 register choice in many speakers, not distress.
 
-Utterance-final contours: statement-like falls on lines punctuated as
-questions are evidence of rhetorical (pre-answered) address; genuine
-information-seeking questions in most English varieties carry rises
-far more often. Count, don't cherry-pick.
+Pause detection is floor-relative: the ledger's silence threshold
+sits a fixed depth below the recording's own peak, so pause counts
+and boundaries move with background level and mic distance. Pause
+structure is within-recording evidence; never compare raw pause
+counts across recordings without loudness-normalizing first.
+
+Utterance-final contours: scope the test to tag and polar questions
+("okay?", "right?", yes/no forms) — wh-questions end in falls natively
+in most English varieties, so a falling "who did this?" is
+unremarkable, while statement-like falls on tag/polar questions are
+evidence of rhetorical (pre-answered) address; genuine
+information-seeking tag/polar questions carry rises far more often. Count, don't cherry-pick. The ±8 st/s rise/fall
+thresholds are perceptually anchored but not speaker-calibrated:
+wide-arc animated speakers inflate raw rise counts. Read contour
+counts — especially the question-final subset — against the
+recording's own final-slope distribution (reported in the packet as
+final_slope_stats_st_per_s), not against absolute totals.
 
 ## Visual signal inventory
 
@@ -48,17 +67,24 @@ What earns weight, and what each observation does and does not
 license:
 
 - **Smile distribution vs. content.** Chart what gets smiled at. Smiles
-  concentrated on aggressive/gotcha content indicate the aggression is
-  enjoyed; they do not establish the "just joking" frame — that frame
+  concentrated on aggressive/gotcha content raise the plausibility that
+  the aggression is enjoyed — live alternatives include social masking,
+  nervousness, politeness-to-camera, performance, and irony, so require
+  ≥2 co-occurring signals before "enjoyed" becomes the working
+  hypothesis, and treat it as inference about display, never certainty
+  about inner state. Smiles also do not establish the "just joking" frame — that frame
   needs shared-play cues (self-deprecation, laughter offered to the
   audience, ironic markers).
 - **Silence behavior.** Distress silences avert and close; staged
   silences display: held direct stares, slow luxurious blinks,
-  eye-rolls, posing, grooming. The difference is usually unambiguous
-  on frames.
+  eye-rolls, posing, grooming. These are typical patterns, not laws — a
+  practiced performer can display through genuine distress and a shy
+  speaker can avert during comfortable staging; treat the pattern as
+  strong but defeasible evidence.
 - **Gaze choreography.** Down-to-read vs. up-to-deliver; gaze snapping
-  to the lens precisely on key lines indicates the speaker knows where
-  the punchlines are (rehearsal/intent), not spontaneity.
+  to the lens precisely on key lines is evidence the speaker knows where
+  the punchlines are (rehearsal/intent); reading placement, habit, and
+  off-screen prompts are the live alternatives.
 - **Adaptors and preening.** Hair sweeps, grooming, and posing at
   charged moments read as performed unbotheredness/self-display.
   Distinguish from stress adaptors (face-touching with gaze aversion,
@@ -71,8 +97,10 @@ license:
   are aggression displays; chin-up, down-the-nose angles are dominance
   framing; recline/languid postures perform ease.
 - **Anger/disgust configurations.** Brow-lowering, lid-tightening,
-  nose-wrinkle, teeth bared beyond articulation. These mark genuine
-  heat far more reliably than voice volume does.
+  nose-wrinkle, teeth bared beyond articulation. These weigh
+  toward genuine heat far more than voice volume does — though a capable
+  performer can produce them deliberately, so they license "heat
+  displayed and owned," not "felt beyond doubt."
 
 **Articulation-discount rule:** single frames freeze speech into
 pseudo-expressions. An open mouth or visible teeth alone is a
@@ -96,7 +124,9 @@ under lab conditions. Report display behavior and timing; never
   itself the performance.
 
 **Ownership heuristic:** when modalities disagree about intensity, the
-face marks ownership. Quoted/performed material: hot voice, cool face.
+face usually marks ownership — a heuristic, strongest during read-aloud
+quotation, capped at medium confidence (deliberate underacting and
+camera awareness are live alternatives). Quoted/performed material: hot voice, cool face.
 The speaker's own affect: it reaches the face (heat, delight,
 disgust) even when the voice is moderate. Assign every strong emotion
 to an owner before characterizing "the speaker's state."
@@ -108,9 +138,11 @@ report it plainly rather than hunting for subtext.
 
 ## Confidence language
 
-- High: speaker count, arousal contour, pause structure, one-take vs
-  edited, laughter presence/absence, gaze/smile timing visible on
-  frames.
+- High: arousal contour, pause structure, detected cuts (absence of
+  detected cuts is only "consistent with a single take"), laughter
+  presence/absence, gaze/smile timing visible on frames, and speaker
+  count when histogram shape, register alternation, and pause-reply
+  evidence converge.
 - Medium: valence hypotheses after triangulation; "performed,"
   "staged," "relished" when supported by ≥2 independent signals.
 - Low/never: sincerity of inner belief, deception, diagnosis,
